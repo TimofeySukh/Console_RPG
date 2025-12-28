@@ -32,8 +32,16 @@ class Gemini:
         self.retry_delay = 20  # seconds to wait before retry
         self.max_retries = len(self.api_keys) + 1  # one retry per key + one final retry
         
-        # Initialize model and settings
-        self.model = "gemini-2.0-flash"
+        # Initialize model and settings (allow override via env)
+        env_model = os.getenv("GEMINI_MODEL")
+        # Prefer 1.5-flash by default due to wider quota availability
+        self.model = env_model or "gemini-2.5-flash"
+        # Candidate models to fall back across when rate-limited/quota issues occur
+        self.model_candidates = []
+        # Ensure the primary model is first
+        self.model_candidates.append(self.model)
+        # Add common fallbacks if not duplicates
+        self.model_index = 0
         self.temperature = temperature
         self.system_instruction = system_instruction or "You are a helpful AI assistant."
         
@@ -73,13 +81,23 @@ class Gemini:
         self._initialize_client()
         self.logger.info(f"Rotated to API key {self.current_key_index + 1}/{len(self.api_keys)}")
 
+    def _rotate_model(self):
+        """Rotate to next available Gemini model"""
+        self.model_index = (self.model_index + 1) % len(self.model_candidates)
+        self.model = self.model_candidates[self.model_index]
+        self.logger.warning(f"Switched Gemini model to '{self.model}' due to rate limit/quota.")
+
     def _handle_rate_limit(self, retries):
-        """Handle rate limit error by rotating keys or waiting"""
+        """Handle rate limit error by rotating keys, then models, then waiting"""
         if retries < len(self.api_keys):
+            # First, try rotating API keys
             self._rotate_key()
             return 0  # No need to wait when switching keys
         else:
-            self.logger.warning(f"All API keys exhausted. Waiting {self.retry_delay} seconds before retry.")
+            # Keys exhausted; try rotating model before waiting
+            self._rotate_model()
+            self.logger.warning(
+                f"All API keys attempted; switching model to '{self.model}'. Waiting {self.retry_delay} seconds before retry.")
             return self.retry_delay
 
     def send_message(self, prompt):
@@ -98,7 +116,7 @@ class Gemini:
                 )
                 return response.text
             except Exception as e:
-                if "429" in str(e) and retries < self.max_retries - 1:
+                if ("429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)) and retries < self.max_retries - 1:
                     wait_time = self._handle_rate_limit(retries)
                     if wait_time > 0:
                         time.sleep(wait_time)
@@ -152,7 +170,7 @@ class Gemini:
                     }
                     
             except Exception as e:
-                if "429" in str(e) and retries < self.max_retries - 1:
+                if ("429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)) and retries < self.max_retries - 1:
                     wait_time = self._handle_rate_limit(retries)
                     if wait_time > 0:
                         time.sleep(wait_time)

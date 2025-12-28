@@ -204,6 +204,14 @@ def api_attack():
     try:
         if 'character' not in session or 'enemy' not in session:
             return jsonify({"error": "No battle in progress."})
+        if session.get('character_dead'):
+            return jsonify({
+                "error": "Character is dead and cannot act.",
+                "combat_log": "You cannot act — you are defeated.",
+                "character_hp": session.get('character', {}).get('hp', 0),
+                "enemy_hp": session.get('enemy', {}).get('hp', 0),
+                "character_defeated": True
+            })
         
         character = session['character']
         enemy = session['enemy']
@@ -232,6 +240,26 @@ def api_attack():
             }
             print(f"Using fallback attack: {attack_config}")
         
+        # Range check before attack
+        distance = get_distance(character['pos'], enemy['pos'])
+        attack_range = int(attack_config.get('range', 0))
+        if distance > attack_range:
+            # Deduct speed cost even on attempt
+            attack_cost = GAME_RULES['combat']['attack_cost']
+            character['movement_left'] = max(0, character['movement_left'] - attack_cost)
+
+            session['character'] = character
+            session['enemy'] = enemy
+            session.modified = True
+
+            return jsonify({
+                "combat_log": f"Target out of range for {attack_config['name']} (distance {distance} > range {attack_range}).",
+                "character_hp": character['hp'],
+                "enemy_hp": enemy['hp'],
+                "movement_left": character['movement_left'],
+                "out_of_range": True
+            })
+
         # Auto-roll attack
         roll = random.randint(1, 20)
         if roll >= 10:  # TODO: Use proper AC calculation
@@ -242,7 +270,7 @@ def api_attack():
                 print(f"Error calculating damage: {e}")
                 damage = random.randint(1, 6)  # Fallback damage
             
-            enemy['hp'] -= damage
+            enemy['hp'] = max(0, enemy['hp'] - damage)
             combat_log = f"You used {attack_config['name']} and dealt {damage} damage."
         else:
             combat_log = f"Your {attack_config['name']} missed!"
@@ -453,8 +481,7 @@ def api_enemy_attack():
         available_attacks = ENEMIES[enemy.get('name', 'goblin').lower()]['abilities']
         
         for attack_name, attack in available_attacks.items():
-            if attack['range'] >= math.sqrt((player_pos['col'] - enemy_pos['col'])**2 + 
-                                           (player_pos['row'] - enemy_pos['row'])**2):
+            if is_in_range(attack.get('range', 0), player_pos, enemy_pos):
                 attack_in_range = True
                 best_attack = attack
                 break
@@ -475,8 +502,7 @@ def api_enemy_attack():
             combat_log += "Enemy moves closer to attack! "
             
             # Проверяем, не стал ли игрок доступен для атаки после перемещения
-            distance = math.sqrt((player_pos['col'] - enemy_pos['col'])**2 + 
-                               (player_pos['row'] - enemy_pos['row'])**2)
+            distance = get_distance(player_pos, enemy_pos)
             
             # Проверяем атаки снова
             for attack_name, attack in available_attacks.items():
@@ -492,10 +518,27 @@ def api_enemy_attack():
             if roll >= 10:  # TODO: Использовать правильный расчет AC
                 dice_count, dice_sides = map(int, best_attack['damage'].split('d'))
                 damage = sum(random.randint(1, dice_sides) for _ in range(dice_count))
-                character['hp'] -= damage
+                character['hp'] = max(0, character['hp'] - damage)
                 combat_log += f"Enemy uses {best_attack['name']} and deals {damage} damage! "
             else:
                 combat_log += f"Enemy's {best_attack['name']} missed! "
+
+        # Проверяем смерть персонажа
+        if character['hp'] <= 0:
+            combat_log += "Персонаж повержен! "
+            session['character'] = character
+            session['enemy'] = enemy
+            session['effects'] = effects
+            session['character_dead'] = True
+            session.modified = True
+
+            return jsonify({
+                "combat_log": combat_log,
+                "character_hp": 0,
+                "enemy_hp": enemy['hp'],
+                "enemy_pos": enemy['pos'],
+                "character_defeated": True
+            })
         
         # Проверяем, изменилась ли позиция врага
         if enemy_pos != initial_pos:
@@ -550,14 +593,24 @@ def apply_spell_damage(spell_name, spell_dict):
 
 # Добавим функцию для проверки расстояния
 def get_distance(pos1, pos2):
-    """Упрощенное вычисление расстояния"""
-    col1, row1 = pos1['col'], pos1['row']
-    col2, row2 = pos2['col'], pos2['row']
-    
-    # Евклидово расстояние, деленное на 2 для приближения к игровой механике
-    dx = col1 - col2
-    dy = row1 - row2
-    return math.ceil(math.sqrt(dx * dx + dy * dy) / 2)
+    """Расстояние на гексагональной сетке (even-q offset)"""
+    def offset_to_cube(col, row):
+        # Конвертация even-q вертикальной разметки в кубические координаты
+        x = col
+        z = row - (col // 2)
+        y = -x - z
+        return x, y, z
+
+    x1, y1, z1 = offset_to_cube(pos1['col'], pos1['row'])
+    x2, y2, z2 = offset_to_cube(pos2['col'], pos2['row'])
+    return (abs(x1 - x2) + abs(y1 - y2) + abs(z1 - z2)) // 2
+
+def is_in_range(range_cells, pos1, pos2):
+    """Проверка попадания в радиус по гекс-метрике"""
+    try:
+        return get_distance(pos1, pos2) <= int(range_cells)
+    except Exception:
+        return False
 
 def get_hex_neighbors(col, row):
     """Возвращает соседние клетки для гексагональной сетки"""
@@ -603,6 +656,15 @@ def api_cast_spell():
         character = session.get('character', {})
         enemy = session.get('enemy', {})
         effects = session.get('effects', {'enemy': {}, 'player': {}})
+        
+        if session.get('character_dead'):
+            return jsonify({
+                "error": "Character is dead and cannot act.",
+                "combat_log": "Вы не можете действовать — персонаж повержен.",
+                "character_hp": character.get('hp', 0),
+                "enemy_hp": enemy.get('hp', 0),
+                "character_defeated": True
+            })
         
         combat_log = f"{character.get('name', 'Character')} "
         
@@ -656,27 +718,14 @@ def api_cast_spell():
             distance_check_required = False
         
         if distance_check_required:
-            # Сохраняем старое расстояние для сравнения
-            old_method = math.sqrt((character['pos']['col'] - enemy['pos']['col'])**2 + 
-                                  (character['pos']['row'] - enemy['pos']['row'])**2)
-            # Новый метод
             distance = get_distance(character['pos'], enemy['pos'])
-            
-            print(f"DEBUG: Spell: {spell_name}, Range: {spell_range}")
-            print(f"DEBUG: Player at {character['pos']}, Enemy at {enemy['pos']}")
-            print(f"DEBUG: New distance calc: {distance}, Old Euclidean/2: {old_method/2}")
-            
+            print(f"DEBUG: Spell: {spell_name}, Range: {spell_range}, Hex distance: {distance}")
             if distance > spell_range:
-                # Если враг вне радиуса действия, регистрируем промах
-                # Все равно расходуем слот заклинания
                 if spell_level:
                     character['spell_slots'][spell_level] -= 1
-                
-                combat_log += f"пытается применить {spell_name}, но противник вне радиуса действия ({math.ceil(distance)} > {spell_range})."
-                
+                combat_log += f"пытается применить {spell_name}, но противник вне радиуса действия ({distance} > {spell_range})."
                 session['character'] = character
                 session.modified = True
-                
                 return jsonify({
                     "combat_log": combat_log,
                     "character_hp": character['hp'],
@@ -697,7 +746,7 @@ def api_cast_spell():
 
         elif spell_name == "Ice Knife":
             damage = apply_spell_damage(spell_name, spells_1lvl)
-            enemy['hp'] -= damage
+            enemy['hp'] = max(0, enemy['hp'] - damage)
             effects['enemy']['frozen'] = {'duration': 2, 'source': spell_name}
             combat_log += f"hits with Ice Knife for {damage} damage and freezes the enemy! "
 
@@ -723,12 +772,12 @@ def api_cast_spell():
 
         elif spell_name == "Magic Missile":
             damage = apply_spell_damage(spell_name, spells_1lvl)
-            enemy['hp'] -= damage
+            enemy['hp'] = max(0, enemy['hp'] - damage)
             combat_log += f"launches Magic Missiles for {damage} damage! "
 
         elif spell_name == "Burning Hands":
             damage = apply_spell_damage(spell_name, spells_1lvl)
-            enemy['hp'] -= damage
+            enemy['hp'] = max(0, enemy['hp'] - damage)
             
             # Уточняем эффект горения - 3 хода по 2 урона
             effects['enemy']['burning'] = {
@@ -802,6 +851,13 @@ def api_end_turn():
     try:
         if 'character' not in session:
             return jsonify({"error": "No character in session"})
+        if session.get('character_dead'):
+            return jsonify({
+                "error": "Character is dead and cannot end turn.",
+                "combat_log": "Ход завершить нельзя — персонаж повержен.",
+                "character_hp": session.get('character', {}).get('hp', 0),
+                "character_defeated": True
+            })
             
         character = session['character']
         
