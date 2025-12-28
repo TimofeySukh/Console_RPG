@@ -1,67 +1,98 @@
-# D&D Console Adventure - Web Interface
+# Console RPG — Text + Tactical Web Battle
 
-A web-based interface for the D&D Console Adventure game, featuring a modern UI with medieval styling.
+This repo haveteo games:
+- **Text adventure with AI** (Flask app at app.py) — a room/DM flow powered by Gemini.
+- **Tactical web battle** (Flask app at webui.py) — a hex-grid combat UI. Combat should be triggered from the text game;
 
-## Features
+Maintenance notice: development is paused for the near future; expect limited updates.
 
-- Beautiful medieval-themed UI with responsive design
-- Character creation with race and class selection
-- Real-time game state updates
-- Combat system
-- Save/Load game functionality
-- Bilingual support (English/Russian)
-- Message history with scrolling
-- Character stats display
+## Requirements
+- Python 3.12+
+- Google Gemini API key with a model that has quota (set via environment)
 
-## Setup
+## Environment
+Create a .env in the project root:
+```
+GEMINI_API_KEY=your_key_here
+```
 
-1. Make sure you have Python 3.8+ and uv installed
-2. Install the required dependencies:
-   ```bash
-   uv init
+## Structure
+
    ```
-3. Make sure you have a `.env` file with your Gemini API key:
+   Console_RPG/
+   ├── app.py                  # Text adventure server (Flask, port 8000)
+   ├── webui.py                # Tactical battle UI server (Flask, port 5000)
+   ├── DEF.py                  # Main D&D game logic and DM AI integration
+   ├── gemini.py               # Gemini API wrapper with key rotation and retry logic
+   ├── gemini_schema.py        # Pydantic models and JSON schemas for AI responses
+   ├── room_manager.py         # Room state management for multiplayer sessions
+   ├── config.py               # Game configuration (battlefield, player, enemies, rules)
+   ├── battlefield_configs.py  # Predefined battle arenas and terrain configs
+   ├── character_config.py     # Race/class stats, bonuses, and ability calculations
+   ├── dnd_spells.py           # Spell definitions (level 1, 2, basic attacks)
+   ├── prompts.py              # System prompts for the AI DM in multiple languages
+   ├── translations.py         # Translation loading utilities
+   ├── .env                    # Environment variables (GEMINI_API_KEY, etc.)
+   ├── .env.example            # Example environment file
+   ├── requirements.txt        # Python dependencies
+   ├── pyproject.toml          # Project metadata and uv config
+   ├── static/
+   │   ├── css/
+   │   │   ├── battle.css      # Tactical battle UI styles
+   │   │   ├── character.css   # Character creation styles
+   │   │   ├── dice.css        # Dice roll animations
+   │   │   ├── game.css        # Text adventure UI styles
+   │   │   ├── index.css       # Landing page styles
+   │   │   ├── style.css       # Common styles
+   │   │   └── styles.css      # Additional global styles
+   │   └── js/
+   │       ├── character.js    # Character creation logic
+   │       ├── combat.js       # Combat system frontend
+   │       ├── game.js         # Text adventure frontend
+   │       ├── hexgrid.js      # Hex grid pathfinding and rendering
+   │       ├── index.js        # Landing page logic
+   │       ├── notifications.js # Toast notifications system
+   │       ├── settings.js     # Settings panel
+   │       ├── translations.js # Frontend translation utilities
+   │       └── ui.js           # UI helper functions
+   ├── templates/
+   │   ├── base.html           # Base template with common layout
+   │   ├── battle.html         # Tactical hex-grid battle view
+   │   ├── character.html      # Character sheet view
+   │   ├── create.html         # Character creation form
+   │   ├── game.html           # Text adventure chat interface
+   │   └── index.html          # Landing/room selection page
+   ├── translations/
+   │   ├── en.json             # English translations
+   │   └── ru.json             # Russian translations
+   ├── logs/                   # Application logs (auto-created)
+   ├── saves/                  # Saved game files (auto-created)
+   └── README.md               # This file
    ```
-   GEMINI_API_KEY=your_api_key_here
-   ```
 
-## Running the Game
+## Run servers
+Text adventure (rooms, DM, combat handoff signal):
+```bash
+python app.py  # runs on http://localhost:8000
+```
 
-1. Start the Flask server:
-   ```bash
-   uv run app.py
-   ```
-2. Open your web browser and navigate to:
-   ```
-   http://localhost:5000
-   ```
+Tactical battle UI:
+```bash
+python webui.py  # runs on http://localhost:5000
+```
 
-## How to Play
+## How the handoff works
+- During text play, when combat starts, the server responds with a redirect flag and enemy info. The frontend should navigate the player to the battle UI and seed the enemy (name, HP).
+- After the tactical fight, the battle UI should POST the result back to the text server so the narrative can continue (enemy dead → story continues; player dead → offer character creation).
 
-1. Choose your preferred language (English or Russian)
-2. Create your character by selecting a race and class
-3. Begin your adventure!
+## Playing the text adventure
+- Choose language, create/join a room, and interact with the DM via text.
+- Save/load via provided endpoints (see app UI).
 
-### Available Commands
-- `fight`: Start combat with a random enemy
-- `save`: Save your current game progress
-- `load`: Load a previously saved game
-- `style`: Toggle message style
-- `quit`: Exit the game
+## Playing the tactical battle
+- Starts when redirected from the text game or by visiting /battle in the battle app.
+- Supports movement, attacks, spells, effects, and HP tracking for player/enemy.
 
-## Game Controls
-
-- Use the action input field to enter custom commands
-- Click the "Fight" button to initiate combat
-- Save/Load your game progress using the respective buttons
-- View your character stats in real-time
-- Track your adventure in the message history box
-
-## Technical Details
-
-- Built with Flask (Python web framework)
-- Frontend using Vue.js and Tailwind CSS
-- Medieval-themed UI with MedievalSharp font
-- Responsive design for all screen sizes
-- Real-time game state management
-- Session-based game progress tracking
+## Known limitations
+- Development is currently paused; features and fixes may be delayed and not surely will be continued.
+- Gemini responses depend on your model/quota; ensure your key has access to the configured model.
