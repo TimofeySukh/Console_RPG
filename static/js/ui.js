@@ -182,9 +182,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Изменим функцию handleEnemyTurnResponse для учета статуса врага
 function handleEnemyTurnResponse(response) {
+    if (window.handleBattleResolution && window.handleBattleResolution(response)) {
+        return;
+    }
+
     // Обновляем здоровье персонажа и врага
-    if (document.getElementById('character_hp')) {
-        document.getElementById('character_hp').textContent = response.character_hp;
+    if (document.getElementById('char_hp')) {
+        document.getElementById('char_hp').textContent = response.character_hp;
     }
     if (document.getElementById('enemy_hp')) {
         document.getElementById('enemy_hp').textContent = response.enemy_hp;

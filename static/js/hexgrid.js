@@ -128,6 +128,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 const data = await response.json();
                 console.log('Enemy turn response:', data);
+
+                if (window.handleBattleResolution && window.handleBattleResolution(data)) {
+                    return;
+                }
                 
                 if (data.combat_log) {
                     if (typeof addToBattleLog === 'function') {

@@ -1,4 +1,25 @@
 // Combat-related functionality
+function handleBattleResolution(payload) {
+    if (!payload || !payload.battle_finished) {
+        return false;
+    }
+
+    const redirectUrl = payload.redirect_url || '/game';
+    const message = payload.post_battle_message || payload.combat_log || 'Combat resolved.';
+
+    if (window.showNotification) {
+        window.showNotification(message, payload.enemy_defeated ? 'success' : 'warning');
+    }
+
+    setTimeout(() => {
+        window.location.href = redirectUrl;
+    }, 1400);
+
+    return true;
+}
+
+window.handleBattleResolution = handleBattleResolution;
+
 class CombatManager {
     constructor(config) {
         this.config = config;
@@ -214,6 +235,8 @@ class CombatManager {
                 } else {
                     alert(data.combat_log);
                 }
+
+                handleBattleResolution(data);
             }
         } catch (error) {
             console.error('Error:', error);
@@ -331,6 +354,8 @@ class CombatManager {
             if (window.drawHexGrid) {
                 window.drawHexGrid();
             }
+
+            handleBattleResolution(data);
 
             // В castSpell добавляем обработку телепортации
             if (this.currentAttack && this.currentAttack.spellName === "Misty Step") {

@@ -139,7 +139,9 @@ const gameApp = Vue.createApp({
             timeoutId: null,
             transitionDuration: 500,
             animationDuration: 3000,
-            lastFace: null
+            lastFace: null,
+            battlePending: false,
+            battleStatusMessage: ''
         };
     },
     computed: {
@@ -205,6 +207,21 @@ const gameApp = Vue.createApp({
                 this.showPlayers = false;
             }
         },
+        triggerBattleTransition(payload = {}) {
+            const room = payload.room || this.room || {};
+            if (!room.in_combat || this.battlePending) {
+                return false;
+            }
+
+            this.battlePending = true;
+            this.battleStatusMessage = payload.message || 'Combat detected. Switching to tactical battle.';
+            const redirectUrl = payload.battle_redirect_url || '/battle';
+
+            setTimeout(() => {
+                window.location.href = redirectUrl;
+            }, 900);
+            return true;
+        },
         async sendMessage() {
             if (!this.userInput.trim()) return;
             
@@ -266,6 +283,7 @@ const gameApp = Vue.createApp({
                     if (data.messages) {
                         this.messages = data.messages;
                     }
+                    this.triggerBattleTransition(data);
                 }
             } catch (e) {
                 console.error(e);
@@ -406,6 +424,7 @@ const gameApp = Vue.createApp({
                             if (processData.messages) {
                                 this.messages = processData.messages;
                             }
+                            this.triggerBattleTransition(processData);
                         }
                         
                         // Hide dice overlay after processing
@@ -493,6 +512,7 @@ const gameApp = Vue.createApp({
                     }
                     this.messages = data.messages || [];
                     this.room = data.room;
+                    this.triggerBattleTransition(data);
                     if (data.dice_roll_required) {
                         this.diceNeeded = true;
                         this.diceType = data.dice_roll_request?.dice_type || 'd20';

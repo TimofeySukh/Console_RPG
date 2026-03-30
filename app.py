@@ -1,15 +1,20 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, render_template, request, jsonify, session, Response, send_from_directory
+from flask import Flask, render_template, request, jsonify, session, Response, send_from_directory, redirect, url_for
 from DEF import DnDGame
 from character_config import (RACE_STATS, CLASS_BONUSES, RACE_TRANSLATIONS, CLASS_TRANSLATIONS,
                             RACE_CONFIGS, CLASS_CONFIGS, calculate_ability_modifier)
 from room_manager import RoomManager
+from config import BATTLEFIELD, PLAYER as BATTLE_PLAYER, ENEMIES as BATTLE_ENEMIES, GAME_RULES
+from battlefield_configs import BATTLEFIELD_CONFIGS
+from dnd_spells import spells_1lvl, spells_2lvl, basic_attacks
 import os
 import json
 import uuid
 import logging
+import copy
+import re
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from datetime import datetime
@@ -97,6 +102,8 @@ def get_room_lock(room_id):
 
 # Store messages for each room
 room_messages = {}
+DEFAULT_BATTLEFIELD_ID = "forest_ambush"
+_tactical_webui = None
 
 class RoomMessage(BaseModel):
     type: str
@@ -111,6 +118,253 @@ class RoomMessage(BaseModel):
     @property
     def dm_response(self) -> str:
         return self.message if self.type == 'dm' else ""
+
+
+def get_tactical_webui():
+    global _tactical_webui
+    if _tactical_webui is None:
+        import webui as tactical_webui
+        _tactical_webui = tactical_webui
+    return _tactical_webui
+
+
+def get_player_ability_scores(player: PlayerState) -> dict:
+    ability_scores = getattr(player, 'ability_scores', None)
+    if ability_scores:
+        return dict(ability_scores)
+    return {
+        'strength': getattr(player, 'strength', 10),
+        'dexterity': getattr(player, 'dexterity', 10),
+        'constitution': getattr(player, 'constitution', 10),
+        'intelligence': getattr(player, 'intelligence', 10),
+        'wisdom': getattr(player, 'wisdom', 10),
+        'charisma': getattr(player, 'charisma', 10),
+    }
+
+
+def calculate_player_max_hp(player: PlayerState) -> int:
+    race_hp = RACE_STATS.get(player.race, {}).get('hp', 10)
+    class_bonus = CLASS_BONUSES.get(player.class_name, {}).get('hp_bonus', 0)
+    return max(1, race_hp + class_bonus)
+
+
+def infer_battle_enemy_type(*texts: str) -> str:
+    normalized_text = " ".join(text or "" for text in texts).lower()
+    hints = {
+        'orc': ('orc', 'орк'),
+        'goblin': ('goblin', 'гоблин', 'bandit', 'бандит', 'skeleton', 'скелет', 'wolf', 'волк'),
+    }
+    for enemy_type, aliases in hints.items():
+        if any(alias in normalized_text for alias in aliases):
+            return enemy_type
+    return 'goblin'
+
+
+def ensure_room_combat_details(room, narrative_message: str = "") -> str:
+    enemy_type = room.enemy_name if room.enemy_name in BATTLE_ENEMIES else infer_battle_enemy_type(room.enemy_name, narrative_message)
+    if room.enemy_name not in BATTLE_ENEMIES:
+        room.enemy_name = enemy_type
+    if room.enemy_health is None:
+        room.enemy_health = BATTLE_ENEMIES[enemy_type]['stats']['hp']
+    return enemy_type
+
+
+def build_battle_character(player: PlayerState, battlefield_id: str):
+    battlefield_config = copy.deepcopy(BATTLEFIELD_CONFIGS.get(battlefield_id, BATTLEFIELD_CONFIGS[DEFAULT_BATTLEFIELD_ID]))
+    ability_scores = get_player_ability_scores(player)
+    max_hp = max(calculate_player_max_hp(player), player.health_points)
+    return {
+        'name': player.name,
+        'race': player.race,
+        'class': player.class_name,
+        'stats': {
+            **copy.deepcopy(BATTLE_PLAYER['stats']),
+            **ability_scores,
+            'hp': max_hp,
+            'max_hp': max_hp,
+        },
+        'hp': max(0, player.health_points),
+        'max_hp': max_hp,
+        'speed': BATTLE_PLAYER['stats']['speed'],
+        'movement_left': BATTLE_PLAYER['stats']['speed'],
+        'pos': copy.deepcopy(battlefield_config['player_start']),
+        'spell_slots': {
+            '1': max(0, player.magic_1lvl),
+            '2': max(0, player.magic_2lvl),
+        },
+        'abilities': copy.deepcopy(BATTLE_PLAYER['abilities']),
+        'ability_scores': ability_scores,
+    }
+
+
+def build_battle_enemy(room, battlefield_id: str):
+    battlefield_config = copy.deepcopy(BATTLEFIELD_CONFIGS.get(battlefield_id, BATTLEFIELD_CONFIGS[DEFAULT_BATTLEFIELD_ID]))
+    enemy_type = ensure_room_combat_details(room)
+    enemy_template = copy.deepcopy(BATTLE_ENEMIES[enemy_type])
+    return {
+        'name': enemy_template['name'],
+        'hp': max(0, room.enemy_health if room.enemy_health is not None else enemy_template['stats']['hp']),
+        'max_hp': enemy_template['stats']['max_hp'],
+        'speed': enemy_template['stats']['speed'],
+        'movement_left': enemy_template['stats']['speed'],
+        'pos': copy.deepcopy(battlefield_config['enemy_start']),
+        'abilities': enemy_template['abilities'],
+        'battle_type': enemy_type,
+    }
+
+
+def seed_battle_session(room, player: PlayerState, force_reset: bool = False):
+    room_id = room.room_id
+    player_id = player.id
+    active_room = session.get('battle_active_room')
+    active_player = session.get('battle_active_player')
+    if not force_reset and active_room == room_id and active_player == player_id and session.get('character') and session.get('enemy'):
+        return
+
+    battlefield_id = session.get('battlefield_id', DEFAULT_BATTLEFIELD_ID)
+    battlefield_config = copy.deepcopy(BATTLEFIELD_CONFIGS.get(battlefield_id, BATTLEFIELD_CONFIGS[DEFAULT_BATTLEFIELD_ID]))
+    session['battlefield_id'] = battlefield_id
+    session['battlefield_config'] = battlefield_config
+    session['current_terrain'] = battlefield_config['default_terrain']
+    session['effects'] = {'enemy': {}, 'player': {}}
+    session['character'] = build_battle_character(player, battlefield_id)
+    session['enemy'] = build_battle_enemy(room, battlefield_id)
+    session['character_dead'] = False
+    session['battle_active_room'] = room_id
+    session['battle_active_player'] = player_id
+    session['battle_outcome_processed'] = False
+    session.modified = True
+
+
+def load_game_state_from_room(room, player: PlayerState) -> DnDGame:
+    game = DnDGame(language=room.language)
+    game.player_id = player.id
+    game.room_state = room
+    game.player_race = player.race
+    game.player_class = player.class_name
+    game.health_points = player.health_points
+    game.gold = player.gold
+    game.damage = player.damage
+    game.level = player.level
+    game.magic_1lvl = player.magic_1lvl
+    game.magic_2lvl = player.magic_2lvl
+    game.last_dice_roll = player.last_dice_roll
+    game.in_combat = room.in_combat
+    if room.in_combat and room.enemy_name:
+        game.enemy = {
+            'name': room.enemy_name,
+            'hp': room.enemy_health
+        }
+    return game
+
+
+def finalize_battle(room, player: PlayerState, outcome: str, combat_log: str = "") -> str:
+    enemy_name = room.enemy_name or session.get('enemy', {}).get('battle_type') or session.get('enemy', {}).get('name') or 'enemy'
+    room.in_combat = False
+    summary = (
+        f"Tactical combat finished. Outcome: {outcome}. "
+        f"Enemy: {enemy_name}. "
+        f"Player HP: {player.health_points}. "
+        f"Enemy HP: {room.enemy_health if room.enemy_health is not None else 0}. "
+        f"Combat log: {combat_log}"
+    )
+    add_room_message(room.room_id, summary, 'system')
+
+    dm_text = ""
+    try:
+        game = load_game_state_from_room(room, player)
+        response = game.send_message(summary, player_id=player.id, room_state=room)
+        dm_text = response.get('message', '')
+        if response.get('player_update_required'):
+            for player_update in response.get('players_update', []):
+                target_pid = player_update.get('player_id')
+                if not target_pid or target_pid not in room.players:
+                    continue
+                target_player = room.players[target_pid]
+                if 'health_points' in player_update:
+                    target_player.health_points = player_update['health_points']
+                if 'gold' in player_update:
+                    target_player.gold = player_update['gold']
+                if 'damage' in player_update:
+                    target_player.damage = player_update['damage']
+    except Exception:
+        logging.exception("Failed to generate post-battle narrative")
+
+    room.enemy_name = None
+    room.enemy_health = None
+
+    if dm_text:
+        add_room_message(room.room_id, dm_text, 'dm')
+    elif outcome == 'victory':
+        dm_text = "The dust settles. The fight is over."
+        add_room_message(room.room_id, dm_text, 'dm')
+    else:
+        dm_text = "Your vision blurs as the fight slips away from you."
+        add_room_message(room.room_id, dm_text, 'dm')
+
+    return dm_text
+
+
+def sync_battle_state_with_room(room, player: PlayerState, payload: dict) -> dict:
+    character = session.get('character', {})
+    enemy = session.get('enemy', {})
+
+    player.health_points = max(0, int(character.get('hp', player.health_points)))
+    player.magic_1lvl = int(character.get('spell_slots', {}).get('1', player.magic_1lvl))
+    player.magic_2lvl = int(character.get('spell_slots', {}).get('2', player.magic_2lvl))
+
+    if enemy:
+        room.enemy_health = max(0, int(enemy.get('hp', room.enemy_health or 0)))
+        room.enemy_name = enemy.get('battle_type') or room.enemy_name
+
+    enemy_defeated = bool(payload.get('enemy_defeated'))
+    character_defeated = bool(payload.get('character_defeated')) or player.health_points <= 0
+
+    if enemy_defeated or character_defeated:
+        room.enemy_health = 0 if enemy_defeated else room.enemy_health
+        post_battle_message = ""
+        if not session.get('battle_outcome_processed'):
+            session['battle_outcome_processed'] = True
+            post_battle_message = finalize_battle(
+                room,
+                player,
+                'victory' if enemy_defeated else 'defeat',
+                payload.get('combat_log', '')
+            )
+        payload['battle_finished'] = True
+        payload['redirect_url'] = url_for('game')
+        if post_battle_message:
+            payload['post_battle_message'] = post_battle_message
+        session.pop('battle_active_room', None)
+        session.pop('battle_active_player', None)
+    else:
+        room.in_combat = True
+
+    room_manager.update_room(room)
+    session.modified = True
+    return payload
+
+
+def wrap_battle_action(handler):
+    if 'room_id' not in session or 'player_id' not in session:
+        return jsonify({'error': 'Not in a room'}), 400
+
+    room = room_manager.get_room(session['room_id'])
+    if not room:
+        return jsonify({'error': 'Room not found'}), 404
+
+    player = room.players.get(session['player_id'])
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+
+    seed_battle_session(room, player)
+    response = handler()
+    payload = response.get_json(silent=True)
+    if payload is None:
+        return response
+
+    synced_payload = sync_battle_state_with_room(room, player, payload)
+    return jsonify(synced_payload), response.status_code
 
 @app.route('/')
 def index():
@@ -533,9 +787,11 @@ def game_action():
                 player.dice_type = None
                 player.dice_modifier = None
             
-            # Handle combat started flag (placeholder for now)
+            # Initialize tactical combat state inside the shared room state.
             if response.get('combat_started'):
                 room.in_combat = True
+                ensure_room_combat_details(room, response.get('message', ''))
+                seed_battle_session(room, player, force_reset=True)
             
             # Update room state
             room_manager.update_room(room)
@@ -554,6 +810,8 @@ def game_action():
                 'room': room.model_dump(),
                 'dice_roll_required': response.get('dice_roll_required', False),
                 'dice_roll_request': response.get('dice_roll_request', {}),
+                'combat_started': response.get('combat_started', False),
+                'battle_redirect_url': url_for('battle') if room.in_combat else None,
                 'messages': latest_messages,
                 'last_message_id': latest_messages[-1]['id'] if latest_messages else None,
                 'player_message_id': player_message_id,
@@ -761,15 +1019,10 @@ def process_roll():
             if 'magic_2lvl' in player_update:
                 target_player.magic_2lvl = player_update['magic_2lvl']
         
-        # Update room combat state if needed
-        combat_result = response.get('combat_result', {})
-        if combat_result:
-            if combat_result.get('damage_dealt') and room.enemy_health:
-                room.enemy_health -= combat_result['damage_dealt']
-                if room.enemy_health <= 0:
-                    room.in_combat = False
-                    room.enemy_name = None
-                    room.enemy_health = None
+        if response.get('combat_started'):
+            room.in_combat = True
+            ensure_room_combat_details(room, response.get('message', ''))
+            seed_battle_session(room, player, force_reset=True)
         
         # Reset last roll after processing
         player.last_dice_roll = None
@@ -789,6 +1042,8 @@ def process_roll():
             'message': response.get('message', ''),
             'player': player_data,
             'room': room.model_dump(),
+            'combat_started': response.get('combat_started', False),
+            'battle_redirect_url': url_for('battle') if room.in_combat else None,
             'messages': latest_messages,
             'last_message_id': latest_messages[-1]['id'] if latest_messages else None,
             'dm_message_id': dm_message_id
@@ -912,6 +1167,83 @@ def character():
 def game():
     lang = session.get('language', 'en')
     return render_template('game.html', lang=lang)
+
+
+@app.route('/battle')
+def battle():
+    if 'room_id' not in session or 'player_id' not in session:
+        return redirect(url_for('index'))
+
+    room = room_manager.get_room(session['room_id'])
+    if not room or not room.in_combat:
+        return redirect(url_for('game'))
+
+    player = room.players.get(session['player_id'])
+    if not player:
+        return redirect(url_for('character'))
+
+    seed_battle_session(room, player)
+
+    battlefield_config = session.get('battlefield_config', BATTLEFIELD_CONFIGS[DEFAULT_BATTLEFIELD_ID])
+    config_data = {
+        'battlefield': {
+            **battlefield_config,
+            'terrain_types': BATTLEFIELD['terrain_types']
+        },
+        'player': session['character'],
+        'enemy': session['enemy'],
+        'rules': GAME_RULES,
+        'currentTerrain': session.get('current_terrain', battlefield_config['default_terrain']),
+        'spells': {
+            'level1': spells_1lvl,
+            'level2': spells_2lvl
+        },
+        'basicAttacks': basic_attacks
+    }
+
+    return render_template(
+        'battle.html',
+        character=session['character'],
+        enemy=session['enemy'],
+        battlefield_config=battlefield_config,
+        current_terrain=session.get('current_terrain', battlefield_config['default_terrain']),
+        game_rules=GAME_RULES,
+        spells_1lvl=spells_1lvl,
+        spells_2lvl=spells_2lvl,
+        basic_attacks=basic_attacks,
+        config_data=config_data,
+        lang=room.language
+    )
+
+
+@app.route('/api/roll_dice', methods=['POST'])
+def battle_roll_dice():
+    tactical_webui = get_tactical_webui()
+    return tactical_webui.roll_dice()
+
+
+@app.route('/api/attack', methods=['POST'])
+def battle_attack():
+    tactical_webui = get_tactical_webui()
+    return wrap_battle_action(tactical_webui.api_attack)
+
+
+@app.route('/api/enemy_attack', methods=['POST'])
+def battle_enemy_attack():
+    tactical_webui = get_tactical_webui()
+    return wrap_battle_action(tactical_webui.api_enemy_attack)
+
+
+@app.route('/api/cast_spell', methods=['POST'])
+def battle_cast_spell():
+    tactical_webui = get_tactical_webui()
+    return wrap_battle_action(tactical_webui.api_cast_spell)
+
+
+@app.route('/api/end_turn', methods=['POST'])
+def battle_end_turn():
+    tactical_webui = get_tactical_webui()
+    return wrap_battle_action(tactical_webui.api_end_turn)
 
 @app.route('/translations/<path:filename>')
 def serve_translation(filename):

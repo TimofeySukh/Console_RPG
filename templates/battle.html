@@ -7,183 +7,195 @@
 {% endblock %}
 
 {% block content %}
-<div class="game-container bg-gray-900">
-    <!-- Header Bar -->
-    <header class="game-header">
-        <div class="container mx-auto">
-            <div class="header-content">
-                <div class="character-status">
-                    <h2 class="text-amber-200 medieval text-xl">{{ character.name }}</h2>
-                    <div class="flex gap-4 mt-2">
-                        <div class="text-gray-200">HP: <span id="char_hp" class="text-amber-200">{{ character.hp }}/{{ character.max_hp }}</span></div>
-                        <div class="text-gray-200">Speed: <span id="char_speed" class="text-amber-200">{{ character.movement_left }}/{{ character.speed }}</span></div>
+<div class="battle-shell game-container">
+    <header class="battle-header">
+        <div class="battle-header-grid">
+            <div class="battle-status-card">
+                <span class="status-eyebrow medieval">Operative</span>
+                <h1 class="status-title medieval">{{ character.name }}</h1>
+                <div class="status-metrics">
+                    <div class="status-metric">
+                        <span class="metric-label">HP</span>
+                        <span id="char_hp" class="metric-value">{{ character.hp }}/{{ character.max_hp }}</span>
+                    </div>
+                    <div class="status-metric">
+                        <span class="metric-label">Speed</span>
+                        <span id="char_speed" class="metric-value">{{ character.movement_left }}/{{ character.speed }}</span>
                     </div>
                 </div>
-                <div class="enemy-status">
-                    <h2 class="text-red-300 medieval text-xl">Enemy: {{ enemy.name }}</h2>
-                    <div class="flex gap-4 mt-2">
-                        <div class="text-gray-200">HP: <span id="enemy_hp" class="text-red-300">{{ enemy.hp }}/{{ enemy.max_hp }}</span></div>
-                        <div class="text-gray-200">Speed: <span id="enemy_speed" class="text-red-300">{{ enemy.speed }}</span></div>
+            </div>
+
+            <div class="battle-status-card battle-status-card-enemy">
+                <span class="status-eyebrow medieval">Threat</span>
+                <h2 class="status-title medieval">{{ enemy.name }}</h2>
+                <div class="status-metrics">
+                    <div class="status-metric">
+                        <span class="metric-label">HP</span>
+                        <span id="enemy_hp" class="metric-value">{{ enemy.hp }}/{{ enemy.max_hp }}</span>
+                    </div>
+                    <div class="status-metric">
+                        <span class="metric-label">Speed</span>
+                        <span id="enemy_speed" class="metric-value">{{ enemy.speed }}</span>
                     </div>
                 </div>
             </div>
         </div>
     </header>
-    
-    <!-- Main Content Area - Made scrollable -->
-    <div class="main-content">
-        <!-- Character Details Panel -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <!-- Character Card -->
-            <div class="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                <h3 class="text-amber-100 text-lg medieval mb-2">Character Details</h3>
-                <div class="spell-slots bg-gray-700 rounded p-3 mt-2">
-                    <p class="text-amber-100 font-semibold">Spell Slots:</p>
-                    <div class="grid grid-cols-2 gap-2 mt-1">
-                        <p>Level 1: <span id="spell_slots_1" class="text-blue-300">{{ character.spell_slots['1'] }}</span></p>
-                        <p>Level 2: <span id="spell_slots_2" class="text-purple-300">{{ character.spell_slots['2'] }}</span></p>
+
+    <div class="battle-layout">
+        <aside class="battle-sidebar">
+            <section class="battle-panel">
+                <span class="panel-eyebrow medieval">Player Deck</span>
+                <h3 class="panel-title medieval">Field Stats</h3>
+
+                <div class="battle-stat-grid">
+                    <div class="battle-stat-card">
+                        <span class="battle-stat-label">Race</span>
+                        <span class="battle-stat-value">{{ character.race }}</span>
+                    </div>
+                    <div class="battle-stat-card">
+                        <span class="battle-stat-label">Class</span>
+                        <span class="battle-stat-value">{{ character.class }}</span>
                     </div>
                 </div>
-                <div class="ability-scores mt-3">
-                    <h3 class="text-amber-100 text-md">Ability Scores</h3>
-                    <div class="scores-grid grid grid-cols-3 gap-2 mt-2 text-sm">
-                        <div class="bg-gray-700 p-2 rounded">STR: <span id="ability_strength" class="text-amber-200">{{ character.ability_scores.strength }}</span></div>
-                        <div class="bg-gray-700 p-2 rounded">DEX: <span id="ability_dexterity" class="text-amber-200">{{ character.ability_scores.dexterity }}</span></div>
-                        <div class="bg-gray-700 p-2 rounded">CON: <span id="ability_constitution" class="text-amber-200">{{ character.ability_scores.constitution }}</span></div>
-                        <div class="bg-gray-700 p-2 rounded">INT: <span id="ability_intelligence" class="text-amber-200">{{ character.ability_scores.intelligence }}</span></div>
-                        <div class="bg-gray-700 p-2 rounded">WIS: <span id="ability_wisdom" class="text-amber-200">{{ character.ability_scores.wisdom }}</span></div>
-                        <div class="bg-gray-700 p-2 rounded">CHA: <span id="ability_charisma" class="text-amber-200">{{ character.ability_scores.charisma }}</span></div>
+
+                <div class="battle-resource-block">
+                    <span class="resource-label">Spell Slots</span>
+                    <div class="battle-stat-grid">
+                        <div class="battle-stat-card">
+                            <span class="battle-stat-label">Level 1</span>
+                            <span id="spell_slots_1" class="battle-stat-value">{{ character.spell_slots['1'] }}</span>
+                        </div>
+                        <div class="battle-stat-card">
+                            <span class="battle-stat-label">Level 2</span>
+                            <span id="spell_slots_2" class="battle-stat-value">{{ character.spell_slots['2'] }}</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Game Area / Canvas -->
-            <div class="md:col-span-2">
-                <p id="instructions" class="text-amber-100 mb-2">Click and drag from your character to plan movement. Movement cost: {{ game_rules.movement.base_cost }} speed per hex.</p>
+
+                <div class="ability-matrix">
+                    {% for ability, value in character.ability_scores.items() %}
+                    <div class="ability-chip">
+                        <span class="ability-chip-label">{{ ability[:3]|upper }}</span>
+                        <span id="ability_{{ ability }}" class="ability-chip-value">{{ value }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="battle-panel">
+                <span class="panel-eyebrow medieval">Movement</span>
+                <h3 class="panel-title medieval">Tactical Controls</h3>
+                <p id="instructions" class="battle-copy">Click and drag from your unit to plan movement across the hex field.</p>
+
+                <div class="control-stack">
+                    <button id="applyMoveButton" class="battle-button battle-button-primary">
+                        Apply Move <span class="button-detail">Cost <span id="moveCost">0</span></span>
+                    </button>
+                    <button id="endTurnButton" class="battle-button battle-button-secondary">End Turn</button>
+                </div>
+            </section>
+        </aside>
+
+        <section class="battle-main">
+            <div class="battle-panel battle-canvas-panel">
+                <div class="battle-canvas-toolbar">
+                    <div class="toolbar-group">
+                        <span class="panel-eyebrow medieval">Arena</span>
+                        <h3 class="panel-title medieval">Hex Grid</h3>
+                    </div>
+                    <div class="toolbar-inline">
+                        <div class="zoom-control">
+                            <span>Zoom</span>
+                            <input type="range" id="zoomSlider" min="0.5" max="2.0" step="0.1" value="1.0">
+                        </div>
+                        <div class="map-controls">
+                            <button id="selectModeBtn" class="map-mode-button active">Cell Select</button>
+                            <button id="panModeBtn" class="map-mode-button">Map View</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="canvas-container">
-                    <canvas id="hexCanvas" class="w-full border border-gray-700 rounded-lg bg-gray-800" width="800" height="500"></canvas>
+                    <canvas id="hexCanvas" width="800" height="500"></canvas>
                 </div>
             </div>
-        </div>
-        
-        <!-- Controls Area -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <!-- Movement Controls -->
-            <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 relative">
-                <h3 class="text-amber-100 text-lg medieval mb-3">Movement</h3>
-                <div class="flex flex-col gap-2">
-                    <button id="applyMoveButton" class="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded transition-colors">
-                        Apply Move (<span id="moveCost">0</span>)
-                    </button>
-                    <button id="endTurnButton" class="bg-amber-600 hover:bg-amber-700 text-white p-3 rounded transition-colors">
-                        End Turn
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Combat Controls -->
-            <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 md:col-span-2 relative">
-                <h3 class="text-amber-100 text-lg medieval mb-3">Combat</h3>
-                
-                <!-- Attack Options Tabs -->
-                <div class="mb-4">
-                    <div class="border-b border-gray-700">
-                        <nav class="flex -mb-px">
-                            <button class="group inline-flex items-center py-2 px-4 border-b-2 border-amber-500 text-amber-200 font-medium text-sm" role="tab" aria-selected="true">
-                                Basic Attacks
-                            </button>
-                            <button class="group inline-flex items-center py-2 px-4 border-b-2 border-transparent text-gray-400 hover:text-gray-300 font-medium text-sm" role="tab" aria-selected="false">
-                                Spells
-                            </button>
-                        </nav>
+
+            <div class="battle-panel battle-actions-panel">
+                <div class="battle-actions-header">
+                    <div>
+                        <span class="panel-eyebrow medieval">Action Deck</span>
+                        <h3 class="panel-title medieval">Combat Options</h3>
                     </div>
-                    
-                    <!-- Basic Attacks -->
-                    <div class="pt-3">
-                        <div class="basic-attacks grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {% for attack_name, attack in character.abilities.items() %}
-                            <button class="attack-button basic-attack text-left text-sm bg-gray-700 hover:bg-gray-600 text-white p-3 rounded transition-colors"
-                                    data-attack-type="{{ attack_name }}"
-                                    data-range="{{ attack.range }}"
-                                    data-aoe="{{ attack.aoe|default(0) }}"
-                                    data-damage="{{ attack.damage }}">
-                                <div class="font-bold">{{ attack.name }}</div>
-                                <div class="text-xs text-gray-300">Range: {{ attack.range }}, Damage: {{ attack.damage }}</div>
+                    <div class="battle-tabs">
+                        <button class="battle-tab active" role="tab" aria-selected="true">Basic Attacks</button>
+                        <button class="battle-tab" role="tab" aria-selected="false">Spells</button>
+                    </div>
+                </div>
+
+                <div class="basic-attacks attack-grid">
+                    {% for attack_name, attack in character.abilities.items() %}
+                    <button class="attack-button attack-card"
+                            data-attack-type="{{ attack_name }}"
+                            data-range="{{ attack.range }}"
+                            data-aoe="{{ attack.aoe|default(0) }}"
+                            data-damage="{{ attack.damage }}">
+                        <span class="attack-name">{{ attack.name }}</span>
+                        <span class="attack-meta">Range {{ attack.range }}</span>
+                        <span class="attack-meta">Damage {{ attack.damage }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+
+                <div class="spell-list hidden">
+                    <div class="spell-section">
+                        <h4 class="spell-section-title">Level 1 Spells</h4>
+                        <div class="attack-grid">
+                            {% for spell_name, spell_data in spells_1lvl.items() %}
+                            <button class="attack-button attack-card spell-card"
+                                    data-spell-name="{{ spell_name }}"
+                                    data-spell-level="1"
+                                    data-range="{{ spell_data.range }}"
+                                    data-aoe="{{ spell_data.aoe|default(0) }}"
+                                    {% if character.spell_slots['1'] < 1 %}disabled{% endif %}>
+                                <span class="attack-name">{{ spell_name }}</span>
+                                <span class="attack-meta">Range {{ spell_data.range }}</span>
                             </button>
                             {% endfor %}
                         </div>
-                        
-                        <!-- Spells (Initially Hidden) -->
-                        <div class="spell-list hidden">
-                            <div class="mb-2">
-                                <h4 class="text-blue-300 text-sm font-bold mb-1">Level 1 Spells</h4>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {% for spell_name, spell_data in spells_1lvl.items() %}
-                                    <button class="attack-button spell-btn text-left text-sm bg-blue-900 hover:bg-blue-800 text-white p-3 rounded transition-colors"
-                                            data-spell-name="{{ spell_name }}"
-                                            data-spell-level="1"
-                                            data-range="{{ spell_data.range }}"
-                                            data-aoe="{{ spell_data.aoe|default(0) }}"
-                                            {% if character.spell_slots['1'] < 1 %}disabled{% endif %}>
-                                        <div class="font-bold">{{ spell_name }}</div>
-                                        <div class="text-xs text-gray-300">Range: {{ spell_data.range }}</div>
-                                    </button>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <h4 class="text-purple-300 text-sm font-bold mb-1">Level 2 Spells</h4>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {% for spell_name, spell_data in spells_2lvl.items() %}
-                                    <button class="attack-button spell-btn text-left text-sm bg-purple-900 hover:bg-purple-800 text-white p-3 rounded transition-colors"
-                                            data-spell-name="{{ spell_name }}"
-                                            data-spell-level="2"
-                                            data-range="{{ spell_data.range }}"
-                                            data-aoe="{{ spell_data.aoe|default(0) }}"
-                                            {% if character.spell_slots['2'] < 1 %}disabled{% endif %}>
-                                        <div class="font-bold">{{ spell_name }}</div>
-                                        <div class="text-xs text-gray-300">Range: {{ spell_data.range }}</div>
-                                    </button>
-                                    {% endfor %}
-                                </div>
-                            </div>
+                    </div>
+
+                    <div class="spell-section">
+                        <h4 class="spell-section-title">Level 2 Spells</h4>
+                        <div class="attack-grid">
+                            {% for spell_name, spell_data in spells_2lvl.items() %}
+                            <button class="attack-button attack-card spell-card"
+                                    data-spell-name="{{ spell_name }}"
+                                    data-spell-level="2"
+                                    data-range="{{ spell_data.range }}"
+                                    data-aoe="{{ spell_data.aoe|default(0) }}"
+                                    {% if character.spell_slots['2'] < 1 %}disabled{% endif %}>
+                                <span class="attack-name">{{ spell_name }}</span>
+                                <span class="attack-meta">Range {{ spell_data.range }}</span>
+                            </button>
+                            {% endfor %}
                         </div>
                     </div>
                 </div>
-                
-                <!-- Action Buttons -->
-                <div class="flex gap-2">
-                    <button id="attackButton" class="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
-                        Attack
-                    </button>
-                    <button id="castSpellButton" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed" disabled>
-                        Cast Spell
-                    </button>
+
+                <div class="battle-action-row">
+                    <button id="attackButton" class="battle-button battle-button-danger">Attack</button>
+                    <button id="castSpellButton" class="battle-button battle-button-primary" disabled>Cast Spell</button>
                 </div>
-                
-                <div id="attackPreview" class="mt-3 p-2 bg-gray-700 rounded text-gray-300 text-sm hidden"></div>
+
+                <div id="attackPreview" class="attack-preview hidden"></div>
             </div>
-        </div>
+        </section>
     </div>
 </div>
 
-<!-- Pass configuration to JavaScript -->
 <script>
     window.GAME_CONFIG = JSON.parse('{{ config_data|tojson|safe }}');
 </script>
-
-<!-- Переводим надпись у ползунка масштаба -->
-<div class="zoom-control" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); padding: 8px; border-radius: 10px; display: flex; align-items: center; z-index: 100;">
-    <span style="color: white; margin-right: 10px;">Zoom:</span>
-    <input type="range" id="zoomSlider" min="0.5" max="2.0" step="0.1" value="1.0" style="width: 150px;">
-</div>
-
-<!-- Переводим кнопки переключения режимов карты -->
-<div class="map-controls" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); padding: 8px; border-radius: 10px; display: flex; gap: 10px; z-index: 100;">
-    <button id="selectModeBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded active">Cell Select</button>
-    <button id="panModeBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded">Map View</button>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -192,46 +204,37 @@
 <script src="{{ url_for('static', filename='js/combat.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
 <script>
-    // JavaScript to handle tab switching between Basic Attacks and Spells
     document.addEventListener('DOMContentLoaded', function() {
         const tabButtons = document.querySelectorAll('[role="tab"]');
         const basicAttacks = document.querySelector('.basic-attacks');
         const spellList = document.querySelector('.spell-list');
-        
+
         tabButtons[0].addEventListener('click', function() {
-            tabButtons[0].classList.add('border-amber-500', 'text-amber-200');
-            tabButtons[0].classList.remove('border-transparent', 'text-gray-400');
-            tabButtons[1].classList.add('border-transparent', 'text-gray-400');
-            tabButtons[1].classList.remove('border-amber-500', 'text-amber-200');
+            tabButtons[0].classList.add('active');
+            tabButtons[1].classList.remove('active');
+            tabButtons[0].setAttribute('aria-selected', 'true');
+            tabButtons[1].setAttribute('aria-selected', 'false');
             basicAttacks.classList.remove('hidden');
             spellList.classList.add('hidden');
         });
-        
+
         tabButtons[1].addEventListener('click', function() {
-            tabButtons[1].classList.add('border-amber-500', 'text-amber-200');
-            tabButtons[1].classList.remove('border-transparent', 'text-gray-400');
-            tabButtons[0].classList.add('border-transparent', 'text-gray-400');
-            tabButtons[0].classList.remove('border-amber-500', 'text-amber-200');
+            tabButtons[1].classList.add('active');
+            tabButtons[0].classList.remove('active');
+            tabButtons[1].setAttribute('aria-selected', 'true');
+            tabButtons[0].setAttribute('aria-selected', 'false');
             spellList.classList.remove('hidden');
             basicAttacks.classList.add('hidden');
         });
-    });
 
-    // Исправляем обработчик кнопки телепортации
-    document.addEventListener('DOMContentLoaded', function() {
-        // Кнопка телепортации
         const teleportButton = document.getElementById('teleportButton');
         if (teleportButton) {
             teleportButton.addEventListener('click', function() {
                 if (window.teleportToSelectedCell) {
                     window.teleportToSelectedCell();
-                } else {
-                    alert("Функция телепортации не найдена!");
                 }
             });
         }
-        
-        // Остальной код...
     });
 </script>
-{% endblock %} 
+{% endblock %}

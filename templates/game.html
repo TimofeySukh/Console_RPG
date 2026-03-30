@@ -78,6 +78,14 @@
     </div>
   </div>
 
+  <div v-if="battlePending" class="battle-transition">
+    <div class="battle-transition-card">
+      <span class="battle-transition-label medieval">Tactical Link Engaged</span>
+      <h2 class="battle-transition-title medieval">Combat Protocol</h2>
+      <p class="battle-transition-text">{{ battleStatusMessage }}</p>
+    </div>
+  </div>
+
   <!-- Header Bar -->
   <header class="game-header">
     <div class="container">
@@ -134,7 +142,7 @@
     <!-- Messages Section -->
     <div class="messages-container">
       <div class="messages-content" ref="messagesContainer">
-        <div v-for="msg in allMessages" :key="msg.id" class="message">
+        <div v-for="msg in allMessages" :key="msg.id" :class="['message', `message-${msg.type}`]">
           <template v-if="msg.type === 'system'">
             <span class="message-label" data-trans="system"></span>
             <span class="message-content" v-html="formatMessage(msg.message)"></span>
