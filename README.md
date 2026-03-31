@@ -1,9 +1,5 @@
 # Console RPG — Text + Tactical Web Battle
 
-This repo haveteo games:
-- **Text adventure with AI** (Flask app at app.py) — a room/DM flow powered by Gemini.
-- **Tactical web battle** (Flask app at webui.py) — a hex-grid combat UI. Combat should be triggered from the text game;
-
 Maintenance notice: development is paused for the near future; expect limited updates.
 
 ## Requirements
